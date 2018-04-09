@@ -1,0 +1,60 @@
+---
+type: install
+version: 1.4
+id: microprofile-build
+name: Microprofile Demo
+
+globals:
+  projectName: myapp
+  buildDir: /var/lib/jelastic/PROJECTS/${globals.projectName}
+  deployDir: /deployments
+  gitUrl: https://github.com/pilhuhn/microprofile-demo.git
+  cmd: java -jar ${globals.deployDir}/ms.jar  
+
+nodes:
+- count: 1
+  cloudlets: 16
+  nodeGroup: build
+  nodeType: maven
+  tag: 3.3.9-jdk-1.8.0_102
+  env: 
+    MAVEN_RUN_ARGS_${globals.projectName}: -Pswarm
+    
+- count: 1
+  cloudlets: 16
+  nodeGroup: cp
+  image: openjdk:jre-slim
+  volumes:
+  - ${globals.deployDir}
+  volumeMounts:
+    ${globals.deployDir}:
+      sourcePath: ${globals.deployDir}
+      sourceNodeGroup: build
+      readOnly: true
+  restartDelay: 15
+  cmd: ${globals.cmd}
+  env:
+    JELASTIC_EXPOSE: 8080
+
+onInstall:
+- addBuildProject       
+- buildProject
+
+onAfterBuildProject[project:${globals.projectName}]: restartContainers[cp]
+
+actions:
+  addBuildProject:
+    api: env.deployment.AddBuildProject
+    name: ${globals.projectName}
+    nodeId: ${nodes.build.first.id}
+    repo: ${globals.gitUrl}
+    hooks: | 
+      {"postBuild":"cd ${globals.buildDir}/target; cp $(ls | grep *.jar | head -n 1) ${globals.deployDir}/ms.jar 2>/dev/null || :"}
+  
+  buildProject:
+    api: env.deployment.BuildProject
+    nodeId: ${nodes.build.first.id}
+    project: ${globals.projectName}
+    skipUpload: true
+    
+startPage: hello 
